@@ -1,2 +1,5 @@
 # Match the Reachy Mini desktop app daemon version (check app or http://localhost:8000/docs).
-reachy-mini==1.8.0
+reachy-mini==1.11.0
+Pillow
+opencv-python
+mediapipe
