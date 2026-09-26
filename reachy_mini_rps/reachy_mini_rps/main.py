@@ -42,9 +42,11 @@ class RockPaperScissorsApp(ReachyMiniApp):
     custom_app_url: str | None = "http://0.0.0.0:8042"
     request_media_backend: str | None = None
 
-    def __init__(self, running_on_wireless: bool = False, laptop_camera: bool = False) -> None:
+    def __init__(self, running_on_wireless: bool = False, laptop_camera: bool = False, no_mic: bool = False, local_sound: bool = False) -> None:
         super().__init__(running_on_wireless=running_on_wireless)
         self.laptop_camera = laptop_camera
+        self.no_mic = no_mic
+        self.local_sound = local_sound
         self._jpeg_lock = threading.Lock()
         self._jpeg: bytes | None = None
         self._latest_frame: np.ndarray | None = None
@@ -56,6 +58,11 @@ class RockPaperScissorsApp(ReachyMiniApp):
         game = Game()
         tracker = HandTracker()
         self._install_routes(game)
+        if self.local_sound:
+            import winsound
+            reachy_mini.media.play_sound = lambda path: winsound.PlaySound(
+                path, winsound.SND_FILENAME | winsound.SND_ASYNC
+            )
         reachy_mini.media.start_recording()
         laptop: LaptopCamera | None = None
         preview: threading.Thread | None = None
@@ -183,16 +190,16 @@ class RockPaperScissorsApp(ReachyMiniApp):
             reachy_mini.goto_target(head=head, antennas=antennas, duration=0.5)
             watching = True
 
-        if speech.accepting_mic():
+        if not self.no_mic and speech.accepting_mic():
             if voice_active(reachy_mini.media.get_audio_sample()):
                 hot_chunks += 1
             else:
                 hot_chunks = 0
-        else:
+        elif self.no_mic:
             hot_chunks = 0
 
         heard = hot_chunks >= _HOT_CHUNKS
-        if speech.accepting_mic() and (game.play_requested or heard):
+        if (self.no_mic or speech.accepting_mic()) and (game.play_requested or heard):
             if game.begin_round():
                 logger.info("Round started. Reachy throws %s", game.reachy_throw)
                 return 0, False
@@ -269,12 +276,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Watch the laptop camera instead of the Reachy camera. Motors, mic, and speaker stay on the robot.",
     )
+    parser.add_argument(
+        "--no-mic",
+        action="store_true",
+        help="Disable voice activation (for simulators without audio). Start rounds via POST /play.",
+    )
+    parser.add_argument(
+        "--local-sound",
+        action="store_true",
+        help="Play WAV clips via Windows audio instead of the robot speaker.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    app = RockPaperScissorsApp(laptop_camera=args.laptop_camera)
+    app = RockPaperScissorsApp(laptop_camera=args.laptop_camera, no_mic=args.no_mic, local_sound=args.local_sound)
     try:
         app.wrapped_run()
     except KeyboardInterrupt:
